@@ -1,0 +1,224 @@
+package com.example.vocabhelp.ui.detail
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.vocabhelp.audio.PronunciationPlayer
+import com.example.vocabhelp.data.db.MeaningStatus
+import com.example.vocabhelp.data.db.WordEntity
+import com.example.vocabhelp.ui.common.appViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WordDetailScreen(
+    id: Long,
+    onBack: () -> Unit,
+) {
+    val vm = appViewModel(key = "detail-$id") { WordDetailViewModel(it.wordRepository, id) }
+    val word by vm.word.collectAsStateWithLifecycle()
+    val player = remember { PronunciationPlayer() }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { player.release() }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(word?.word ?: "") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { vm.delete(onBack) }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        val w = word
+        if (w == null) {
+            Spacer(Modifier.fillMaxSize())
+            return@Scaffold
+        }
+        DetailContent(
+            word = w,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            onPlayAudio = { url -> player.play(url) },
+            onRetryLookup = vm::retryLookup,
+            onSaveManual = vm::saveManualMeaning,
+            onSaveUserFields = vm::saveUserFields,
+        )
+    }
+}
+
+@Composable
+private fun DetailContent(
+    word: WordEntity,
+    modifier: Modifier = Modifier,
+    onPlayAudio: (String) -> Unit,
+    onRetryLookup: () -> Unit,
+    onSaveManual: (String) -> Unit,
+    onSaveUserFields: (String, String) -> Unit,
+) {
+    Column(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = word.word,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            word.phoneticAudioUrl?.takeIf { it.isNotBlank() }?.let { audio ->
+                Spacer(Modifier.height(0.dp))
+                IconButton(onClick = { onPlayAudio(audio) }) {
+                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Pronounce")
+                }
+            }
+        }
+        word.partOfSpeech?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        when (word.status) {
+            MeaningStatus.PENDING_LOOKUP -> PendingMeaningSection(
+                onRetry = onRetryLookup,
+                onSaveManual = onSaveManual,
+            )
+            MeaningStatus.RESOLVED, MeaningStatus.MANUAL -> ResolvedMeaningSection(word)
+        }
+        Spacer(Modifier.height(24.dp))
+        OptionalUserFields(word, onSaveUserFields)
+    }
+}
+
+@Composable
+private fun ResolvedMeaningSection(word: WordEntity) {
+    Text(
+        text = word.meaning ?: "",
+        style = MaterialTheme.typography.bodyLarge,
+    )
+    word.example?.takeIf { it.isNotBlank() }?.let { example ->
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "“$example”",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PendingMeaningSection(
+    onRetry: () -> Unit,
+    onSaveManual: (String) -> Unit,
+) {
+    var manual by rememberSaveable { mutableStateOf("") }
+    Text(
+        text = "Meaning not fetched yet.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AssistChip(
+            onClick = onRetry,
+            label = { Text("Retry lookup") },
+            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+            colors = AssistChipDefaults.assistChipColors(),
+        )
+    }
+    Spacer(Modifier.height(16.dp))
+    OutlinedTextField(
+        value = manual,
+        onValueChange = { manual = it },
+        label = { Text("Or type the meaning manually") },
+        modifier = Modifier.fillMaxWidth(),
+        minLines = 3,
+    )
+    Spacer(Modifier.height(8.dp))
+    OutlinedButton(
+        onClick = { onSaveManual(manual) },
+        enabled = manual.isNotBlank(),
+    ) {
+        Text("Save meaning")
+    }
+}
+
+@Composable
+private fun OptionalUserFields(
+    word: WordEntity,
+    onSave: (String, String) -> Unit,
+) {
+    var ctx by rememberSaveable(word.id) { mutableStateOf(word.contextSentence.orEmpty()) }
+    var note by rememberSaveable(word.id) { mutableStateOf(word.personalNote.orEmpty()) }
+    Text(
+        text = "Optional",
+        style = MaterialTheme.typography.labelMedium,
+    )
+    Spacer(Modifier.height(8.dp))
+    OutlinedTextField(
+        value = ctx,
+        onValueChange = { ctx = it },
+        label = { Text("Sentence where you found it") },
+        modifier = Modifier.fillMaxWidth(),
+        minLines = 2,
+    )
+    Spacer(Modifier.height(8.dp))
+    OutlinedTextField(
+        value = note,
+        onValueChange = { note = it },
+        label = { Text("Note / mnemonic") },
+        modifier = Modifier.fillMaxWidth(),
+        minLines = 2,
+    )
+    Spacer(Modifier.height(8.dp))
+    Button(onClick = { onSave(ctx, note) }) {
+        Text("Save")
+    }
+}
