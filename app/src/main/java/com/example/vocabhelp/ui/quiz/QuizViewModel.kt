@@ -49,7 +49,12 @@ class QuizViewModel(
     }
 
     private fun buildOptions(target: WordEntity, distractors: List<WordEntity>): List<QuizOption> {
-        val real = (listOf(target) + distractors).map { QuizOption(it.id, it.meaning ?: "") }
+        val real = (listOf(target) + distractors).map { w ->
+            // Each word may have multiple saved senses; pick one at random per session.
+            // For the target this rotates which sense is being tested over time.
+            val sense = w.meanings.randomOrNull()?.definition.orEmpty()
+            QuizOption(w.id, sense)
+        }
         val padded = if (real.size < 4) {
             real + FALLBACK_DISTRACTORS
                 .filterNot { fb -> real.any { it.text == fb } }

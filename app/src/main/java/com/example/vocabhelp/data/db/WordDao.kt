@@ -12,12 +12,14 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface WordDao {
 
+    // `meanings` is a JSON blob column; SQLite treats it as TEXT, so LIKE
+    // matches across every saved definition for free.
     @Query(
         """
         SELECT * FROM words
         WHERE :query = ''
            OR word LIKE '%' || :query || '%'
-           OR IFNULL(meaning, '') LIKE '%' || :query || '%'
+           OR meanings LIKE '%' || :query || '%'
         ORDER BY nextReviewAt ASC, createdAt DESC
         """,
     )
@@ -26,7 +28,7 @@ interface WordDao {
     @Query(
         """
         SELECT * FROM words
-        WHERE meaning IS NOT NULL
+        WHERE status != 'PENDING_LOOKUP'
           AND nextReviewAt <= :now
         ORDER BY nextReviewAt ASC
         """,
@@ -36,7 +38,7 @@ interface WordDao {
     @Query(
         """
         SELECT * FROM words
-        WHERE meaning IS NOT NULL
+        WHERE status != 'PENDING_LOOKUP'
           AND nextReviewAt <= :now
         ORDER BY nextReviewAt ASC
         """,
@@ -46,7 +48,7 @@ interface WordDao {
     @Query(
         """
         SELECT COUNT(*) FROM words
-        WHERE meaning IS NOT NULL
+        WHERE status != 'PENDING_LOOKUP'
           AND nextReviewAt <= :now
         """,
     )
@@ -56,7 +58,7 @@ interface WordDao {
         """
         SELECT * FROM words
         WHERE id != :excludingId
-          AND meaning IS NOT NULL
+          AND status != 'PENDING_LOOKUP'
         ORDER BY RANDOM()
         LIMIT :limit
         """,

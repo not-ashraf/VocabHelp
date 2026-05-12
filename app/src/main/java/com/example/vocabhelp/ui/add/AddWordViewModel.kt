@@ -26,24 +26,25 @@ class AddWordViewModel(
 
     fun setWord(value: String) {
         _state.update {
-            // Editing the word invalidates any previous lookup result.
             it.copy(
                 word = value,
                 lookup = LookupState.Idle,
-                selectedIndex = null,
+                selectedIndices = emptySet(),
                 manualMeaning = "",
             )
         }
-        // Cancel any in-flight lookup tied to a stale word.
         lookupJob?.cancel()
     }
 
     fun setContext(value: String) = _state.update { it.copy(contextSentence = value) }
     fun setNote(value: String) = _state.update { it.copy(personalNote = value) }
     fun setManualMeaning(value: String) = _state.update { it.copy(manualMeaning = value) }
-    fun selectOption(index: Int) = _state.update { it.copy(selectedIndex = index) }
 
-    /** Explicitly look up the current word. No-ops if the field is empty or a lookup is already running. */
+    fun toggleOption(index: Int) = _state.update {
+        val next = if (index in it.selectedIndices) it.selectedIndices - index else it.selectedIndices + index
+        it.copy(selectedIndices = next)
+    }
+
     fun lookupNow() {
         val word = _state.value.word.trim().lowercase()
         if (word.isBlank()) return
@@ -53,7 +54,7 @@ class AddWordViewModel(
     }
 
     private suspend fun runLookup(word: String) {
-        _state.update { it.copy(lookup = LookupState.Loading, selectedIndex = null) }
+        _state.update { it.copy(lookup = LookupState.Loading, selectedIndices = emptySet()) }
         val existing = repo.findByWord(word)
         if (existing != null) {
             _state.update { it.copy(lookup = LookupState.AlreadySaved(existing.id)) }
@@ -61,7 +62,6 @@ class AddWordViewModel(
         }
         val outcome = repo.lookup(word)
         _state.update { current ->
-            // Only apply if the user hasn't edited the word in the meantime.
             if (current.word.trim().lowercase() != word) return@update current
             current.copy(
                 lookup = when (outcome) {
@@ -69,7 +69,7 @@ class AddWordViewModel(
                     LookupOutcome.NotFound -> LookupState.NotFound
                     LookupOutcome.NetworkError -> LookupState.NetworkError
                 },
-                selectedIndex = null,
+                selectedIndices = emptySet(),
             )
         }
     }
@@ -78,19 +78,28 @@ class AddWordViewModel(
         val current = _state.value
         if (current.word.isBlank() || current.saving) return
 
-        val (selected, audio) = when (val l = current.lookup) {
-            is LookupState.Found -> l.options.getOrNull(current.selectedIndex ?: -1) to l.audioUrl
-            else -> null to null
+        val lookup = current.lookup
+        val selectedOptions: List<DefinitionOption>
+        val audio: String?
+        when (lookup) {
+            is LookupState.Found -> {
+                selectedOptions = current.selectedIndices.sorted().mapNotNull { lookup.options.getOrNull(it) }
+                audio = lookup.audioUrl
+            }
+            else -> {
+                selectedOptions = emptyList()
+                audio = null
+            }
         }
         val manual = current.manualMeaning.takeIf {
-            it.isNotBlank() && current.lookup !is LookupState.Found
+            it.isNotBlank() && lookup !is LookupState.Found
         }
 
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             val outcome = repo.save(
                 word = current.word,
-                selected = selected,
+                selectedOptions = selectedOptions,
                 audioUrl = audio,
                 manualMeaning = manual,
                 contextSentence = current.contextSentence,
@@ -109,7 +118,7 @@ data class AddWordUiState(
     val personalNote: String = "",
     val manualMeaning: String = "",
     val lookup: LookupState = LookupState.Idle,
-    val selectedIndex: Int? = null,
+    val selectedIndices: Set<Int> = emptySet(),
     val saving: Boolean = false,
 ) {
     val canLookup: Boolean
@@ -117,7 +126,7 @@ data class AddWordUiState(
 
     val canSave: Boolean
         get() = !saving && word.isNotBlank() && when (lookup) {
-            is LookupState.Found -> selectedIndex != null
+            is LookupState.Found -> selectedIndices.isNotEmpty()
             LookupState.NotFound,
             LookupState.NetworkError,
             -> true

@@ -1,6 +1,5 @@
 package com.example.vocabhelp.ui.add
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,7 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -112,7 +111,7 @@ fun AddWordScreen(onBack: () -> Unit) {
 
             LookupSection(
                 state = state,
-                onSelect = vm::selectOption,
+                onToggle = vm::toggleOption,
                 onRetry = vm::lookupNow,
                 onPlayAudio = { url -> player.play(url) },
                 onManualMeaningChange = vm::setManualMeaning,
@@ -163,7 +162,7 @@ fun AddWordScreen(onBack: () -> Unit) {
 @Composable
 private fun LookupSection(
     state: AddWordUiState,
-    onSelect: (Int) -> Unit,
+    onToggle: (Int) -> Unit,
     onRetry: () -> Unit,
     onPlayAudio: (String) -> Unit,
     onManualMeaningChange: (String) -> Unit,
@@ -186,8 +185,8 @@ private fun LookupSection(
         is LookupState.Found -> FoundSection(
             options = lookup.options,
             audioUrl = lookup.audioUrl,
-            selectedIndex = state.selectedIndex,
-            onSelect = onSelect,
+            selectedIndices = state.selectedIndices,
+            onToggle = onToggle,
             onPlayAudio = onPlayAudio,
         )
         LookupState.NotFound -> NotFoundOrErrorSection(
@@ -218,17 +217,23 @@ private fun LookupSection(
 private fun FoundSection(
     options: List<DefinitionOption>,
     audioUrl: String?,
-    selectedIndex: Int?,
-    onSelect: (Int) -> Unit,
+    selectedIndices: Set<Int>,
+    onToggle: (Int) -> Unit,
     onPlayAudio: (String) -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            "Pick a meaning",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Pick meanings",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "${selectedIndices.size} of ${options.size} selected",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         audioUrl?.takeIf { it.isNotBlank() }?.let { url ->
             IconButton(onClick = { onPlayAudio(url) }) {
                 Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Pronounce")
@@ -239,8 +244,8 @@ private fun FoundSection(
     options.forEachIndexed { index, option ->
         DefinitionCard(
             option = option,
-            selected = selectedIndex == index,
-            onClick = { onSelect(index) },
+            selected = index in selectedIndices,
+            onClick = { onToggle(index) },
         )
         if (index != options.lastIndex) Spacer(Modifier.height(8.dp))
     }
@@ -252,19 +257,18 @@ private fun DefinitionCard(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val border = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    val borderWidth = if (selected) 2.dp else 1.dp
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(bg)
-            .border(1.dp, border, RoundedCornerShape(12.dp))
+            .border(borderWidth, borderColor, RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        RadioButton(selected = selected, onClick = onClick)
+        Checkbox(checked = selected, onCheckedChange = { onClick() })
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             option.partOfSpeech?.takeIf { it.isNotBlank() }?.let {
@@ -325,10 +329,15 @@ private fun NotFoundOrErrorSection(
     )
 }
 
-private fun saveButtonLabel(state: AddWordUiState): String = when {
-    state.saving -> "Saving…"
-    state.lookup is LookupState.Found && state.selectedIndex == null -> "Pick a meaning"
-    state.lookup is LookupState.NotFound && state.manualMeaning.isBlank() -> "Save without meaning"
-    state.lookup is LookupState.NetworkError && state.manualMeaning.isBlank() -> "Save without meaning"
-    else -> "Save"
+private fun saveButtonLabel(state: AddWordUiState): String {
+    val n = state.selectedIndices.size
+    return when {
+        state.saving -> "Saving…"
+        state.lookup is LookupState.Found && n == 0 -> "Pick a meaning"
+        state.lookup is LookupState.Found && n == 1 -> "Save"
+        state.lookup is LookupState.Found -> "Save $n meanings"
+        state.lookup is LookupState.NotFound && state.manualMeaning.isBlank() -> "Save without meaning"
+        state.lookup is LookupState.NetworkError && state.manualMeaning.isBlank() -> "Save without meaning"
+        else -> "Save"
+    }
 }

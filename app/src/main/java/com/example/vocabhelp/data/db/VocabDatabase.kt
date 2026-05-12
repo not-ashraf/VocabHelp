@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 
 @Database(
     entities = [WordEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -24,7 +24,12 @@ abstract class VocabDatabase : RoomDatabase() {
                     context.applicationContext,
                     VocabDatabase::class.java,
                     "vocab.db",
-                ).build().also { INSTANCE = it }
+                )
+                    // Single-developer app, no production users; meaning columns
+                    // are being restructured, so wipe rather than write a migration.
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    .also { INSTANCE = it }
             }
         }
     }

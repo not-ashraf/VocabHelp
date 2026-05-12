@@ -1,5 +1,6 @@
 package com.example.vocabhelp.data.repo
 
+import com.example.vocabhelp.data.db.MeaningEntry
 import com.example.vocabhelp.data.db.MeaningStatus
 import com.example.vocabhelp.data.db.WordDao
 import com.example.vocabhelp.data.db.WordEntity
@@ -55,13 +56,13 @@ class WordRepository(
 
     /**
      * Persists a new word. Status is inferred from inputs:
-     *   selected != null            -> RESOLVED
-     *   manualMeaning is non-blank  -> MANUAL
-     *   otherwise                   -> PENDING_LOOKUP (no meaning yet)
+     *   selectedOptions non-empty   -> RESOLVED
+     *   manualMeaning non-blank     -> MANUAL  (single-element meanings list)
+     *   otherwise                   -> PENDING_LOOKUP (empty meanings list)
      */
     suspend fun save(
         word: String,
-        selected: DefinitionOption?,
+        selectedOptions: List<DefinitionOption>,
         audioUrl: String?,
         manualMeaning: String?,
         contextSentence: String?,
@@ -71,27 +72,19 @@ class WordRepository(
         if (normalized.isEmpty()) return SaveOutcome.Empty
         dao.getByWord(normalized)?.let { return SaveOutcome.Duplicate(it.id) }
 
-        val meaning: String?
-        val pos: String?
-        val example: String?
+        val meanings: List<MeaningEntry>
         val status: MeaningStatus
         when {
-            selected != null -> {
-                meaning = selected.definition
-                pos = selected.partOfSpeech
-                example = selected.example
+            selectedOptions.isNotEmpty() -> {
+                meanings = selectedOptions.map { it.toMeaningEntry() }
                 status = MeaningStatus.RESOLVED
             }
             !manualMeaning.isNullOrBlank() -> {
-                meaning = manualMeaning.trim()
-                pos = null
-                example = null
+                meanings = listOf(MeaningEntry(definition = manualMeaning.trim()))
                 status = MeaningStatus.MANUAL
             }
             else -> {
-                meaning = null
-                pos = null
-                example = null
+                meanings = emptyList()
                 status = MeaningStatus.PENDING_LOOKUP
             }
         }
@@ -100,9 +93,7 @@ class WordRepository(
         val id = dao.insert(
             WordEntity(
                 word = normalized,
-                meaning = meaning,
-                partOfSpeech = pos,
-                example = example,
+                meanings = meanings,
                 phoneticAudioUrl = audioUrl,
                 contextSentence = contextSentence?.takeIf { it.isNotBlank() }?.trim(),
                 personalNote = personalNote?.takeIf { it.isNotBlank() }?.trim(),
@@ -121,7 +112,11 @@ class WordRepository(
         }
     }
 
-    /** Attempts a network lookup for an existing pending row. Returns true if resolved. */
+    /**
+     * Attempts a network lookup for an existing pending row. Best-effort:
+     * we still pick only the first sense automatically because the user isn't
+     * present to choose. They can re-pick on the detail screen later.
+     */
     suspend fun resolveLookup(id: Long): Boolean {
         val existing = dao.getById(id) ?: return false
         if (existing.status != MeaningStatus.PENDING_LOOKUP) return true
@@ -132,9 +127,7 @@ class WordRepository(
         } ?: return false
         dao.update(
             existing.copy(
-                meaning = flat.meaning,
-                partOfSpeech = flat.partOfSpeech,
-                example = flat.example ?: existing.example,
+                meanings = listOf(flat.entry),
                 phoneticAudioUrl = flat.audio ?: existing.phoneticAudioUrl,
                 status = MeaningStatus.RESOLVED,
             ),
@@ -152,7 +145,12 @@ class WordRepository(
         val w = dao.getById(id) ?: return
         val trimmed = meaning.trim()
         if (trimmed.isEmpty()) return
-        dao.update(w.copy(meaning = trimmed, status = MeaningStatus.MANUAL))
+        dao.update(
+            w.copy(
+                meanings = listOf(MeaningEntry(definition = trimmed)),
+                status = MeaningStatus.MANUAL,
+            ),
+        )
     }
 
     suspend fun updateUserFields(id: Long, contextSentence: String?, personalNote: String?) {
@@ -195,30 +193,32 @@ class WordRepository(
         dao.deleteByIds(ids.toList())
     }
 
-    private data class FlattenedDef(
-        val meaning: String,
-        val partOfSpeech: String?,
-        val example: String?,
-        val audio: String?,
-    )
+    private data class FlattenedDef(val entry: MeaningEntry, val audio: String?)
 
     private fun flatten(entries: List<DictionaryEntryDto>): FlattenedDef? {
         val firstMeaning = entries.firstNotNullOfOrNull { entry ->
             entry.meanings.firstOrNull { it.definitions.isNotEmpty() }
         } ?: return null
         val firstDef = firstMeaning.definitions.first()
-        val audio = entries
-            .flatMap { it.phonetics }
+        val audio = entries.flatMap { it.phonetics }
             .firstOrNull { !it.audio.isNullOrBlank() }
             ?.audio
         return FlattenedDef(
-            meaning = firstDef.definition,
-            partOfSpeech = firstMeaning.partOfSpeech,
-            example = firstDef.example,
+            entry = MeaningEntry(
+                partOfSpeech = firstMeaning.partOfSpeech,
+                definition = firstDef.definition,
+                example = firstDef.example,
+            ),
             audio = audio,
         )
     }
 }
+
+private fun DefinitionOption.toMeaningEntry(): MeaningEntry = MeaningEntry(
+    partOfSpeech = partOfSpeech,
+    definition = definition,
+    example = example,
+)
 
 sealed interface SaveOutcome {
     data class Resolved(val id: Long) : SaveOutcome

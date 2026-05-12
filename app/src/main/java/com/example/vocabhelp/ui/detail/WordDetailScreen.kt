@@ -19,6 +19,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -117,13 +118,6 @@ private fun DetailContent(
                 }
             }
         }
-        word.partOfSpeech?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
         Spacer(Modifier.height(16.dp))
         when (word.status) {
             MeaningStatus.PENDING_LOOKUP -> PendingMeaningSection(
@@ -139,17 +133,32 @@ private fun DetailContent(
 
 @Composable
 private fun ResolvedMeaningSection(word: WordEntity) {
-    Text(
-        text = word.meaning ?: "",
-        style = MaterialTheme.typography.bodyLarge,
-    )
-    word.example?.takeIf { it.isNotBlank() }?.let { example ->
-        Spacer(Modifier.height(12.dp))
+    word.meanings.forEachIndexed { index, entry ->
+        if (index > 0) {
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+        }
+        entry.partOfSpeech?.takeIf { it.isNotBlank() }?.let { pos ->
+            Text(
+                text = pos,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(4.dp))
+        }
         Text(
-            text = "“$example”",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = entry.definition,
+            style = MaterialTheme.typography.bodyLarge,
         )
+        entry.example?.takeIf { it.isNotBlank() }?.let { example ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "“$example”",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

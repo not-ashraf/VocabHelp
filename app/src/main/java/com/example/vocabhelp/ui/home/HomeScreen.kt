@@ -284,7 +284,11 @@ private fun WordRow(
             )
             val subtitle = when (word.status) {
                 MeaningStatus.PENDING_LOOKUP -> "Meaning pending — will retry when online"
-                else -> word.meaning?.take(120) ?: ""
+                else -> word.meanings.firstOrNull()?.let { first ->
+                    val head = first.definition.take(120)
+                    val extra = word.meanings.size - 1
+                    if (extra > 0) "$head  ·  +$extra more" else head
+                }.orEmpty()
             }
             if (subtitle.isNotEmpty()) {
                 Text(
