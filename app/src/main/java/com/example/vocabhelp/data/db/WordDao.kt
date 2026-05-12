@@ -89,4 +89,7 @@ interface WordDao {
 
     @Delete
     suspend fun delete(word: WordEntity)
+
+    @Query("DELETE FROM words WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
 }

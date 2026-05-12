@@ -8,6 +8,7 @@ import com.example.vocabhelp.data.remote.DictionaryEntryDto
 import com.example.vocabhelp.sm2.Sm2State
 import com.example.vocabhelp.sm2.applySm2
 import kotlinx.coroutines.flow.Flow
+import retrofit2.HttpException
 
 class WordRepository(
     private val dao: WordDao,
@@ -21,13 +22,48 @@ class WordRepository(
 
     suspend fun getById(id: Long): WordEntity? = dao.getById(id)
 
+    suspend fun findByWord(word: String): WordEntity? =
+        dao.getByWord(word.trim().lowercase())
+
+    /** Hits the dictionary API and returns ALL senses without writing to the DB. */
+    suspend fun lookup(word: String): LookupOutcome {
+        val normalized = word.trim().lowercase()
+        if (normalized.isEmpty()) return LookupOutcome.NotFound
+        return try {
+            val entries = api.lookup(normalized)
+            val options = entries.flatMap { entry ->
+                entry.meanings.flatMap { meaning ->
+                    meaning.definitions.map { def ->
+                        DefinitionOption(
+                            partOfSpeech = meaning.partOfSpeech,
+                            definition = def.definition,
+                            example = def.example,
+                        )
+                    }
+                }
+            }
+            val audio = entries.flatMap { it.phonetics }
+                .firstOrNull { !it.audio.isNullOrBlank() }
+                ?.audio
+            if (options.isEmpty()) LookupOutcome.NotFound else LookupOutcome.Success(options, audio)
+        } catch (e: HttpException) {
+            if (e.code() == 404) LookupOutcome.NotFound else LookupOutcome.NetworkError
+        } catch (_: Exception) {
+            LookupOutcome.NetworkError
+        }
+    }
+
     /**
-     * Inserts the word as PENDING_LOOKUP, then attempts a network lookup.
-     * Returns Result.success(id) when the row is saved (regardless of lookup outcome),
-     * Result.failure when a duplicate exists or input is empty.
+     * Persists a new word. Status is inferred from inputs:
+     *   selected != null            -> RESOLVED
+     *   manualMeaning is non-blank  -> MANUAL
+     *   otherwise                   -> PENDING_LOOKUP (no meaning yet)
      */
-    suspend fun saveAndLookup(
+    suspend fun save(
         word: String,
+        selected: DefinitionOption?,
+        audioUrl: String?,
+        manualMeaning: String?,
         contextSentence: String?,
         personalNote: String?,
     ): SaveOutcome {
@@ -35,26 +71,54 @@ class WordRepository(
         if (normalized.isEmpty()) return SaveOutcome.Empty
         dao.getByWord(normalized)?.let { return SaveOutcome.Duplicate(it.id) }
 
+        val meaning: String?
+        val pos: String?
+        val example: String?
+        val status: MeaningStatus
+        when {
+            selected != null -> {
+                meaning = selected.definition
+                pos = selected.partOfSpeech
+                example = selected.example
+                status = MeaningStatus.RESOLVED
+            }
+            !manualMeaning.isNullOrBlank() -> {
+                meaning = manualMeaning.trim()
+                pos = null
+                example = null
+                status = MeaningStatus.MANUAL
+            }
+            else -> {
+                meaning = null
+                pos = null
+                example = null
+                status = MeaningStatus.PENDING_LOOKUP
+            }
+        }
+
         val now = System.currentTimeMillis()
         val id = dao.insert(
             WordEntity(
                 word = normalized,
-                meaning = null,
+                meaning = meaning,
+                partOfSpeech = pos,
+                example = example,
+                phoneticAudioUrl = audioUrl,
                 contextSentence = contextSentence?.takeIf { it.isNotBlank() }?.trim(),
                 personalNote = personalNote?.takeIf { it.isNotBlank() }?.trim(),
-                status = MeaningStatus.PENDING_LOOKUP,
+                status = status,
                 nextReviewAt = now,
                 createdAt = now,
             ),
         )
         if (id == -1L) {
-            // Race: another insert won. Re-fetch and return its id.
             val existing = dao.getByWord(normalized)
             return existing?.let { SaveOutcome.Duplicate(it.id) } ?: SaveOutcome.Empty
         }
-
-        val resolved = runCatching { resolveLookup(id) }.getOrDefault(false)
-        return if (resolved) SaveOutcome.Resolved(id) else SaveOutcome.Pending(id)
+        return when (status) {
+            MeaningStatus.PENDING_LOOKUP -> SaveOutcome.Pending(id)
+            MeaningStatus.RESOLVED, MeaningStatus.MANUAL -> SaveOutcome.Resolved(id)
+        }
     }
 
     /** Attempts a network lookup for an existing pending row. Returns true if resolved. */
@@ -125,6 +189,11 @@ class WordRepository(
     }
 
     suspend fun delete(word: WordEntity) = dao.delete(word)
+
+    suspend fun deleteByIds(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        dao.deleteByIds(ids.toList())
+    }
 
     private data class FlattenedDef(
         val meaning: String,
