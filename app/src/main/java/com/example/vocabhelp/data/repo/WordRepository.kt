@@ -186,6 +186,9 @@ class WordRepository(
         return QuizQuestion(due, distractors)
     }
 
+    suspend fun countDueNow(now: Long = System.currentTimeMillis()): Int =
+        dao.getDueOnce(now).size
+
     suspend fun delete(word: WordEntity) = dao.delete(word)
 
     suspend fun deleteByIds(ids: Collection<Long>) {

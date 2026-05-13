@@ -21,18 +21,20 @@ class DueWordsNotifier(private val context: Context) {
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(MainActivity.EXTRA_OPEN_QUIZ, true)
         }
         val pending = PendingIntent.getActivity(
             context,
-            0,
+            REQUEST_OPEN_QUIZ,
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
+        val wordWord = if (dueCount == 1) "word" else "words"
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_recent_history)
-            .setContentTitle("Vocab review")
-            .setContentText("$dueCount word${if (dueCount == 1) "" else "s"} due to review")
+            .setContentTitle("Quiz time")
+            .setContentText("Take today's quiz — $dueCount $wordWord ready")
             .setContentIntent(pending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -66,5 +68,6 @@ class DueWordsNotifier(private val context: Context) {
     private companion object {
         const val CHANNEL_ID = "vocab_due_words"
         const val NOTIFICATION_ID = 1001
+        const val REQUEST_OPEN_QUIZ = 1
     }
 }

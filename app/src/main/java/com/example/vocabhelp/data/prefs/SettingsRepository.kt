@@ -21,6 +21,10 @@ class SettingsRepository(context: Context) {
         )
     }
 
+    val notificationPromptDismissed: Flow<Boolean> = ds.data.map { prefs ->
+        prefs[KEY_NOTIF_PROMPT_DISMISSED] ?: false
+    }
+
     suspend fun setEnabled(enabled: Boolean) {
         ds.edit { it[KEY_ENABLED] = enabled }
     }
@@ -32,10 +36,15 @@ class SettingsRepository(context: Context) {
         }
     }
 
+    suspend fun setNotificationPromptDismissed(dismissed: Boolean) {
+        ds.edit { it[KEY_NOTIF_PROMPT_DISMISSED] = dismissed }
+    }
+
     private companion object {
         val KEY_ENABLED = booleanPreferencesKey("reminder_enabled")
         val KEY_HOUR = intPreferencesKey("reminder_hour")
         val KEY_MINUTE = intPreferencesKey("reminder_minute")
+        val KEY_NOTIF_PROMPT_DISMISSED = booleanPreferencesKey("notif_prompt_dismissed")
         const val DEFAULT_HOUR = 21
         const val DEFAULT_MINUTE = 0
     }

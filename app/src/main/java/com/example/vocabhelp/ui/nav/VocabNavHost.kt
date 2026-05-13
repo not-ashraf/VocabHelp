@@ -1,6 +1,7 @@
 package com.example.vocabhelp.ui.nav
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -12,8 +13,22 @@ import com.example.vocabhelp.ui.quiz.QuizScreen
 import com.example.vocabhelp.ui.settings.SettingsScreen
 
 @Composable
-fun VocabNavHost() {
+fun VocabNavHost(
+    openQuizSignal: Boolean = false,
+    onOpenQuizConsumed: () -> Unit = {},
+) {
     val nav = rememberNavController()
+
+    LaunchedEffect(openQuizSignal) {
+        if (openQuizSignal) {
+            nav.navigate(Route.Quiz) {
+                // If we're already on Quiz (warm tap), don't stack it.
+                launchSingleTop = true
+            }
+            onOpenQuizConsumed()
+        }
+    }
+
     NavHost(navController = nav, startDestination = Route.Home) {
         composable<Route.Home> {
             HomeScreen(

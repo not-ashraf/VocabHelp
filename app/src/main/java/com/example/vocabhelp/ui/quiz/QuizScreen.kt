@@ -58,7 +58,11 @@ fun QuizScreen(onBack: () -> Unit) {
         ) {
             when (val s = state) {
                 QuizUiState.Loading -> CircularProgressIndicator()
-                QuizUiState.Done -> DoneState(onBack = onBack)
+                is QuizUiState.Done -> DoneState(
+                    answered = s.answered,
+                    remainingDue = s.remainingDue,
+                    onBack = onBack,
+                )
                 is QuizUiState.Question -> QuestionContent(
                     state = s,
                     onAnswer = vm::answer,
@@ -161,19 +165,28 @@ private fun OptionCard(
 }
 
 @Composable
-private fun DoneState(onBack: () -> Unit) {
+private fun DoneState(
+    answered: Int,
+    remainingDue: Int,
+    onBack: () -> Unit,
+) {
+    val (title, body) = when {
+        answered == 0 -> "All caught up." to
+            "No words are due right now. Add new words or come back later."
+        remainingDue == 0 -> "Quiz complete" to
+            "$answered answered. You're all caught up."
+        else -> "Quiz complete" to
+            "$answered answered. $remainingDue more waiting — come back later."
+    }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = Modifier.fillMaxSize(),
     ) {
-        Text(
-            "All caught up.",
-            style = MaterialTheme.typography.headlineSmall,
-        )
+        Text(title, style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(8.dp))
         Text(
-            "No words are due right now. Add new words or come back later.",
+            text = body,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

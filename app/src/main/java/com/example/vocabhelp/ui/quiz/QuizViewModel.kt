@@ -17,18 +17,31 @@ class QuizViewModel(
     private val _state = MutableStateFlow<QuizUiState>(QuizUiState.Loading)
     val state: StateFlow<QuizUiState> = _state.asStateFlow()
 
+    private var questionsAsked: Int = 0
+
     init { loadNext() }
 
     fun loadNext() {
         _state.value = QuizUiState.Loading
         viewModelScope.launch {
+            if (questionsAsked >= MAX_PER_SESSION) {
+                _state.value = QuizUiState.Done(
+                    answered = questionsAsked,
+                    remainingDue = repo.countDueNow(),
+                )
+                return@launch
+            }
             val q = repo.pickQuizQuestion()
             if (q == null) {
-                _state.value = QuizUiState.Done
+                _state.value = QuizUiState.Done(
+                    answered = questionsAsked,
+                    remainingDue = 0,
+                )
                 return@launch
             }
             val options = buildOptions(q.target, q.distractors)
             val correctIndex = options.indexOfFirst { it.id == q.target.id }
+            questionsAsked++
             _state.value = QuizUiState.Question(
                 target = q.target,
                 options = options,
@@ -67,6 +80,7 @@ class QuizViewModel(
     }
 
     private companion object {
+        const val MAX_PER_SESSION = 5
         val FALLBACK_DISTRACTORS = listOf(
             "a small alcove or recess",
             "a sharp criticism",
@@ -82,7 +96,7 @@ class QuizViewModel(
 
 sealed interface QuizUiState {
     data object Loading : QuizUiState
-    data object Done : QuizUiState
+    data class Done(val answered: Int, val remainingDue: Int) : QuizUiState
     data class Question(
         val target: WordEntity,
         val options: List<QuizOption>,

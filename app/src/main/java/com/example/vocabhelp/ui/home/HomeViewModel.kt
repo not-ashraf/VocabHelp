@@ -3,6 +3,7 @@ package com.example.vocabhelp.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vocabhelp.data.db.WordEntity
+import com.example.vocabhelp.data.prefs.SettingsRepository
 import com.example.vocabhelp.data.repo.WordRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -19,6 +20,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class HomeViewModel(
     private val repo: WordRepository,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -35,8 +37,15 @@ class HomeViewModel(
         dueCount,
         _query,
         _selectedIds,
-    ) { list, due, q, selected ->
-        HomeUiState(words = list, dueCount = due, query = q, selectedIds = selected)
+        settings.notificationPromptDismissed,
+    ) { list, due, q, selected, dismissed ->
+        HomeUiState(
+            words = list,
+            dueCount = due,
+            query = q,
+            selectedIds = selected,
+            notificationPromptDismissed = dismissed,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     fun setQuery(q: String) {
@@ -61,6 +70,11 @@ class HomeViewModel(
             _selectedIds.value = emptySet()
         }
     }
+
+    /** Records that we've prompted the user about notifications; suppresses the Home card. */
+    fun dismissNotificationPrompt() {
+        viewModelScope.launch { settings.setNotificationPromptDismissed(true) }
+    }
 }
 
 data class HomeUiState(
@@ -68,6 +82,7 @@ data class HomeUiState(
     val dueCount: Int = 0,
     val query: String = "",
     val selectedIds: Set<Long> = emptySet(),
+    val notificationPromptDismissed: Boolean = false,
 ) {
     val inSelection: Boolean get() = selectedIds.isNotEmpty()
 }
