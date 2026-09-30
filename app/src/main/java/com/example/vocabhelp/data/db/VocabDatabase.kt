@@ -9,7 +9,7 @@ import androidx.room.TypeConverters
 @Database(
     entities = [WordEntity::class],
     version = 2,
-    exportSchema = false,
+    exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class VocabDatabase : RoomDatabase() {
@@ -25,9 +25,9 @@ abstract class VocabDatabase : RoomDatabase() {
                     VocabDatabase::class.java,
                     "vocab.db",
                 )
-                    // Single-developer app, no production users; meaning columns
-                    // are being restructured, so wipe rather than write a migration.
-                    .fallbackToDestructiveMigration()
+                    // The device holds real saved words: never fall back to a destructive
+                    // migration. Any schema change must bump `version` and add a Migration
+                    // (compare against the exported JSON in app/schemas/).
                     .build()
                     .also { INSTANCE = it }
             }
