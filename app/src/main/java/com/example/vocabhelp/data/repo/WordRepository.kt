@@ -4,16 +4,13 @@ import com.example.vocabhelp.data.db.MeaningEntry
 import com.example.vocabhelp.data.db.MeaningStatus
 import com.example.vocabhelp.data.db.WordDao
 import com.example.vocabhelp.data.db.WordEntity
-import com.example.vocabhelp.data.remote.DictionaryApi
-import com.example.vocabhelp.data.remote.DictionaryEntryDto
 import com.example.vocabhelp.sm2.Sm2State
 import com.example.vocabhelp.sm2.applySm2
 import kotlinx.coroutines.flow.Flow
-import retrofit2.HttpException
 
 class WordRepository(
     private val dao: WordDao,
-    private val api: DictionaryApi,
+    private val dictionary: DictionaryLookup,
 ) {
     fun observeAll(query: String): Flow<List<WordEntity>> = dao.observeAll(query)
     fun observeDue(now: Long = System.currentTimeMillis()): Flow<List<WordEntity>> = dao.observeDue(now)
@@ -26,32 +23,18 @@ class WordRepository(
     suspend fun findByWord(word: String): WordEntity? =
         dao.getByWord(word.trim().lowercase())
 
-    /** Hits the dictionary API and returns ALL senses without writing to the DB. */
-    suspend fun lookup(word: String): LookupOutcome {
-        val normalized = word.trim().lowercase()
-        if (normalized.isEmpty()) return LookupOutcome.NotFound
-        return try {
-            val entries = api.lookup(normalized)
-            val options = entries.flatMap { entry ->
-                entry.meanings.flatMap { meaning ->
-                    meaning.definitions.map { def ->
-                        DefinitionOption(
-                            partOfSpeech = meaning.partOfSpeech,
-                            definition = def.definition,
-                            example = def.example,
-                        )
-                    }
-                }
-            }
-            val audio = entries.flatMap { it.phonetics }
-                .firstOrNull { !it.audio.isNullOrBlank() }
-                ?.audio
-            if (options.isEmpty()) LookupOutcome.NotFound else LookupOutcome.Success(options, audio)
-        } catch (e: HttpException) {
-            if (e.code() == 404) LookupOutcome.NotFound else LookupOutcome.NetworkError
-        } catch (_: Exception) {
-            LookupOutcome.NetworkError
-        }
+    /** Hits the dictionaries and returns ALL senses without writing to the DB. */
+    suspend fun lookup(word: String): LookupOutcome = dictionary.lookup(word)
+
+    /**
+     * Autocomplete candidates for a partially typed word that are NOT already
+     * saved; empty when offline.
+     */
+    suspend fun suggestNewWords(prefix: String): List<String> {
+        val candidates = dictionary.suggest(prefix).map { it.trim().lowercase() }.distinct()
+        if (candidates.isEmpty()) return emptyList()
+        val saved = dao.getExistingWords(candidates).toSet()
+        return candidates.filterNot { it in saved }
     }
 
     /**
@@ -120,15 +103,11 @@ class WordRepository(
     suspend fun resolveLookup(id: Long): Boolean {
         val existing = dao.getById(id) ?: return false
         if (existing.status != MeaningStatus.PENDING_LOOKUP) return true
-        val flat = try {
-            flatten(api.lookup(existing.word))
-        } catch (_: Exception) {
-            null
-        } ?: return false
+        val found = dictionary.lookup(existing.word) as? LookupOutcome.Success ?: return false
         dao.update(
             existing.copy(
-                meanings = listOf(flat.entry),
-                phoneticAudioUrl = flat.audio ?: existing.phoneticAudioUrl,
+                meanings = listOf(found.options.first().toMeaningEntry()),
+                phoneticAudioUrl = found.audioUrl ?: existing.phoneticAudioUrl,
                 status = MeaningStatus.RESOLVED,
             ),
         )
@@ -194,26 +173,6 @@ class WordRepository(
     suspend fun deleteByIds(ids: Collection<Long>) {
         if (ids.isEmpty()) return
         dao.deleteByIds(ids.toList())
-    }
-
-    private data class FlattenedDef(val entry: MeaningEntry, val audio: String?)
-
-    private fun flatten(entries: List<DictionaryEntryDto>): FlattenedDef? {
-        val firstMeaning = entries.firstNotNullOfOrNull { entry ->
-            entry.meanings.firstOrNull { it.definitions.isNotEmpty() }
-        } ?: return null
-        val firstDef = firstMeaning.definitions.first()
-        val audio = entries.flatMap { it.phonetics }
-            .firstOrNull { !it.audio.isNullOrBlank() }
-            ?.audio
-        return FlattenedDef(
-            entry = MeaningEntry(
-                partOfSpeech = firstMeaning.partOfSpeech,
-                definition = firstDef.definition,
-                example = firstDef.example,
-            ),
-            audio = audio,
-        )
     }
 }
 

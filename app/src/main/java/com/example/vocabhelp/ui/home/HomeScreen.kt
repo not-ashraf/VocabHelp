@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +24,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -36,7 +39,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,7 +59,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -71,7 +77,7 @@ import com.example.vocabhelp.ui.common.appViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onAdd: () -> Unit,
+    onAdd: (String) -> Unit,
     onWordClick: (Long) -> Unit,
     onQuiz: () -> Unit,
     onSettings: () -> Unit,
@@ -81,6 +87,16 @@ fun HomeScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    // Leaving Home from the search bar: drop the keyboard so it doesn't cover the next screen.
+    fun leaveSearch(navigate: () -> Unit) {
+        keyboard?.hide()
+        focusManager.clearFocus()
+        navigate()
+    }
+    val addWord: (String) -> Unit = { word -> leaveSearch { onAdd(word) } }
+    val openWord: (Long) -> Unit = { id -> leaveSearch { onWordClick(id) } }
     var hasNotifPermission by remember { mutableStateOf(checkNotifPermission(context)) }
     val notifPermLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -128,13 +144,6 @@ fun HomeScreen(
                 )
             }
         },
-        floatingActionButton = {
-            if (!state.inSelection) {
-                FloatingActionButton(onClick = onAdd) {
-                    Icon(Icons.Default.Add, contentDescription = "Add word")
-                }
-            }
-        },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (!state.inSelection) {
@@ -148,21 +157,25 @@ fun HomeScreen(
                 SearchBar(
                     value = state.query,
                     onChange = vm::setQuery,
+                    onSubmit = { vm.submitQuery(onOpenSaved = openWord, onAddNew = addWord) },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
-            if (state.words.isEmpty()) {
+            val addCandidates = if (state.inSelection) emptyList() else state.addCandidates
+            if (state.words.isEmpty() && addCandidates.isEmpty()) {
                 EmptyState(query = state.query)
             } else {
                 WordList(
                     words = state.words,
+                    addCandidates = addCandidates,
                     selectedIds = state.selectedIds,
                     inSelection = state.inSelection,
                     onTap = { id ->
-                        if (state.inSelection) vm.toggleSelection(id) else onWordClick(id)
+                        if (state.inSelection) vm.toggleSelection(id) else openWord(id)
                     },
                     onLongPress = vm::toggleSelection,
-                    contentPadding = PaddingValues(bottom = 88.dp),
+                    onAddCandidate = addWord,
+                    contentPadding = PaddingValues(bottom = 16.dp),
                 )
             }
         }
@@ -319,13 +332,30 @@ private fun NotificationPromptCard(
 }
 
 @Composable
-private fun SearchBar(value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun SearchBar(
+    value: String,
+    onChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-        placeholder = { Text("Search saved words") },
+        trailingIcon = {
+            if (value.isNotEmpty()) {
+                IconButton(onClick = { onChange("") }) {
+                    Icon(Icons.Default.Close, contentDescription = "Clear search")
+                }
+            }
+        },
+        placeholder = { Text("Search or add a word") },
         singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            imeAction = ImeAction.Search,
+        ),
+        keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
         modifier = modifier.fillMaxWidth(),
     )
 }
@@ -333,13 +363,19 @@ private fun SearchBar(value: String, onChange: (String) -> Unit, modifier: Modif
 @Composable
 private fun WordList(
     words: List<WordEntity>,
+    addCandidates: List<String>,
     selectedIds: Set<Long>,
     inSelection: Boolean,
     onTap: (Long) -> Unit,
     onLongPress: (Long) -> Unit,
+    onAddCandidate: (String) -> Unit,
     contentPadding: PaddingValues,
 ) {
+    val showHeaders = addCandidates.isNotEmpty()
     LazyColumn(contentPadding = contentPadding) {
+        if (showHeaders && words.isNotEmpty()) {
+            item(key = "header-saved") { SectionHeader("Saved") }
+        }
         items(items = words, key = { it.id }) { word ->
             WordRow(
                 word = word,
@@ -350,6 +386,46 @@ private fun WordList(
             )
             HorizontalDivider()
         }
+        if (showHeaders) {
+            item(key = "header-add") { SectionHeader("Add a new word") }
+            items(items = addCandidates, key = { "add-$it" }) { candidate ->
+                AddCandidateRow(word = candidate, onClick = { onAddCandidate(candidate) })
+                HorizontalDivider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun AddCandidateRow(word: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Outlined.AddCircleOutline,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = word,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -420,7 +496,7 @@ private fun EmptyState(query: String) {
             Spacer(Modifier.height(4.dp))
             Text(
                 text = if (query.isBlank()) {
-                    "Tap + to add an obscure word"
+                    "Type a word in the search bar to add it"
                 } else {
                     "Try a different search"
                 },

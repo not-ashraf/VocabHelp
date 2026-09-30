@@ -36,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,7 +53,8 @@ fun WordDetailScreen(
 ) {
     val vm = appViewModel(key = "detail-$id") { WordDetailViewModel(it.wordRepository, id) }
     val word by vm.word.collectAsStateWithLifecycle()
-    val player = remember { PronunciationPlayer() }
+    val context = LocalContext.current
+    val player = remember { PronunciationPlayer(context) }
 
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose { player.release() }
@@ -87,7 +89,7 @@ fun WordDetailScreen(
                 .padding(padding)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
-            onPlayAudio = { url -> player.play(url) },
+            onPlayAudio = { player.play(w.word, w.phoneticAudioUrl) },
             onRetryLookup = vm::retryLookup,
             onSaveManual = vm::saveManualMeaning,
             onSaveUserFields = vm::saveUserFields,
@@ -99,7 +101,7 @@ fun WordDetailScreen(
 private fun DetailContent(
     word: WordEntity,
     modifier: Modifier = Modifier,
-    onPlayAudio: (String) -> Unit,
+    onPlayAudio: () -> Unit,
     onRetryLookup: () -> Unit,
     onSaveManual: (String) -> Unit,
     onSaveUserFields: (String, String) -> Unit,
@@ -111,11 +113,8 @@ private fun DetailContent(
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            word.phoneticAudioUrl?.takeIf { it.isNotBlank() }?.let { audio ->
-                Spacer(Modifier.height(0.dp))
-                IconButton(onClick = { onPlayAudio(audio) }) {
-                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Pronounce")
-                }
+            IconButton(onClick = onPlayAudio) {
+                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Pronounce")
             }
         }
         Spacer(Modifier.height(16.dp))

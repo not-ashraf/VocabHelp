@@ -17,12 +17,18 @@ import kotlinx.coroutines.launch
 class AddWordViewModel(
     private val repo: WordRepository,
     private val scheduler: WorkScheduler,
+    initialWord: String = "",
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(AddWordUiState())
+    private val _state = MutableStateFlow(AddWordUiState(word = initialWord.trim()))
     val state: StateFlow<AddWordUiState> = _state.asStateFlow()
 
     private var lookupJob: Job? = null
+
+    init {
+        // Opened from Home search with a word: load its meanings straight away.
+        if (_state.value.word.isNotBlank()) lookupNow()
+    }
 
     fun setWord(value: String) {
         _state.update {

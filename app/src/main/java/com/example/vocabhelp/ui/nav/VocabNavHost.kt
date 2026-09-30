@@ -32,14 +32,23 @@ fun VocabNavHost(
     NavHost(navController = nav, startDestination = Route.Home) {
         composable<Route.Home> {
             HomeScreen(
-                onAdd = { nav.navigate(Route.AddWord) },
+                onAdd = { word -> nav.navigate(Route.AddWord(word)) },
                 onWordClick = { id -> nav.navigate(Route.WordDetail(id)) },
                 onQuiz = { nav.navigate(Route.Quiz) },
                 onSettings = { nav.navigate(Route.Settings) },
             )
         }
-        composable<Route.AddWord> {
-            AddWordScreen(onBack = { nav.popBackStack() })
+        composable<Route.AddWord> { backStackEntry ->
+            val args = backStackEntry.toRoute<Route.AddWord>()
+            AddWordScreen(
+                initialWord = args.word,
+                onBack = { nav.popBackStack() },
+                onOpenSaved = { id ->
+                    nav.navigate(Route.WordDetail(id)) {
+                        popUpTo<Route.AddWord> { inclusive = true }
+                    }
+                },
+            )
         }
         composable<Route.WordDetail> { backStackEntry ->
             val args = backStackEntry.toRoute<Route.WordDetail>()

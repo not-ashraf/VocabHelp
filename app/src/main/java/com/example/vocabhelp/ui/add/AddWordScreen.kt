@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -54,13 +55,19 @@ import com.example.vocabhelp.ui.common.appViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddWordScreen(onBack: () -> Unit) {
-    val vm = appViewModel { AddWordViewModel(it.wordRepository, it.workScheduler) }
+fun AddWordScreen(
+    initialWord: String,
+    onBack: () -> Unit,
+    onOpenSaved: (Long) -> Unit,
+) {
+    val vm = appViewModel { AddWordViewModel(it.wordRepository, it.workScheduler, initialWord) }
     val state by vm.state.collectAsStateWithLifecycle()
     val focus = remember { FocusRequester() }
-    val player = remember { PronunciationPlayer() }
+    val context = LocalContext.current
+    val player = remember { PronunciationPlayer(context) }
 
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    // Only pop the keyboard when there's no word yet; otherwise it hides the meanings.
+    LaunchedEffect(Unit) { if (initialWord.isBlank()) focus.requestFocus() }
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose { player.release() }
     }
@@ -113,8 +120,9 @@ fun AddWordScreen(onBack: () -> Unit) {
                 state = state,
                 onToggle = vm::toggleOption,
                 onRetry = vm::lookupNow,
-                onPlayAudio = { url -> player.play(url) },
+                onPlayAudio = { url -> player.play(state.word.trim(), url) },
                 onManualMeaningChange = vm::setManualMeaning,
+                onOpenSaved = onOpenSaved,
             )
 
             Spacer(Modifier.height(24.dp))
@@ -164,8 +172,9 @@ private fun LookupSection(
     state: AddWordUiState,
     onToggle: (Int) -> Unit,
     onRetry: () -> Unit,
-    onPlayAudio: (String) -> Unit,
+    onPlayAudio: (String?) -> Unit,
     onManualMeaningChange: (String) -> Unit,
+    onOpenSaved: (Long) -> Unit,
 ) {
     when (val lookup = state.lookup) {
         LookupState.Idle -> {
@@ -205,11 +214,15 @@ private fun LookupSection(
             onRetry = onRetry,
             showRetry = true,
         )
-        is LookupState.AlreadySaved -> Text(
-            "You've already saved this word.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
-        )
+        is LookupState.AlreadySaved -> Column {
+            Text(
+                "You've already saved this word.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { onOpenSaved(lookup.id) }) { Text("Open it") }
+        }
     }
 }
 
@@ -219,7 +232,7 @@ private fun FoundSection(
     audioUrl: String?,
     selectedIndices: Set<Int>,
     onToggle: (Int) -> Unit,
-    onPlayAudio: (String) -> Unit,
+    onPlayAudio: (String?) -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
@@ -234,10 +247,8 @@ private fun FoundSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        audioUrl?.takeIf { it.isNotBlank() }?.let { url ->
-            IconButton(onClick = { onPlayAudio(url) }) {
-                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Pronounce")
-            }
+        IconButton(onClick = { onPlayAudio(audioUrl) }) {
+            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Pronounce")
         }
     }
     Spacer(Modifier.height(8.dp))

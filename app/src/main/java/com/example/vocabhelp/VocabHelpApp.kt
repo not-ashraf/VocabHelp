@@ -5,7 +5,9 @@ import android.content.Context
 import com.example.vocabhelp.data.db.VocabDatabase
 import com.example.vocabhelp.data.db.WordDao
 import com.example.vocabhelp.data.prefs.SettingsRepository
-import com.example.vocabhelp.data.remote.DictionaryApi
+import com.example.vocabhelp.data.remote.DatamuseApi
+import com.example.vocabhelp.data.remote.WiktionaryApi
+import com.example.vocabhelp.data.repo.DictionaryLookup
 import com.example.vocabhelp.data.repo.WordRepository
 import com.example.vocabhelp.work.WorkScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +56,14 @@ class AppContainer(context: Context) {
     }
 
     private val okHttp: OkHttpClient = OkHttpClient.Builder()
+        // Wikimedia's API policy asks clients to identify themselves.
+        .addInterceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header("User-Agent", "VocabHelp/${BuildConfig.VERSION_NAME} (personal Android app)")
+                    .build(),
+            )
+        }
         .addInterceptor(
             HttpLoggingInterceptor().apply {
                 level = if (BuildConfig.DEBUG) {
@@ -67,18 +77,21 @@ class AppContainer(context: Context) {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    private val retrofit: Retrofit = Retrofit.Builder()
-        .baseUrl(DictionaryApi.BASE_URL)
+    private fun retrofit(baseUrl: String): Retrofit = Retrofit.Builder()
+        .baseUrl(baseUrl)
         .client(okHttp)
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
 
-    val dictionaryApi: DictionaryApi = retrofit.create(DictionaryApi::class.java)
+    private val dictionaryLookup = DictionaryLookup(
+        wiktionary = retrofit(WiktionaryApi.BASE_URL).create(WiktionaryApi::class.java),
+        datamuse = retrofit(DatamuseApi.BASE_URL).create(DatamuseApi::class.java),
+    )
 
     val database: VocabDatabase = VocabDatabase.get(appContext)
     val wordDao: WordDao = database.wordDao()
 
-    val wordRepository: WordRepository = WordRepository(wordDao, dictionaryApi)
+    val wordRepository: WordRepository = WordRepository(wordDao, dictionaryLookup)
     val settingsRepository: SettingsRepository = SettingsRepository(appContext)
     val workScheduler: WorkScheduler by lazy { WorkScheduler(appContext) }
 }

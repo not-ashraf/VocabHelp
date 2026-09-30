@@ -80,6 +80,9 @@ interface WordDao {
     @Query("SELECT * FROM words WHERE word = :word LIMIT 1")
     suspend fun getByWord(word: String): WordEntity?
 
+    @Query("SELECT word FROM words WHERE word IN (:words)")
+    suspend fun getExistingWords(words: List<String>): List<String>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(word: WordEntity): Long
 
