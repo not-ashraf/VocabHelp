@@ -7,6 +7,15 @@ data class DefinitionOption(
     val example: String?,
 )
 
+/** A word related in meaning to another (from Datamuse `ml=`), used for quiz options. */
+data class RelatedWord(
+    val word: String,
+    /** Normalised: "noun", "verb", "adjective", "adverb". */
+    val partsOfSpeech: Set<String>,
+    val isSynonym: Boolean,
+    val definitions: List<DefinitionOption>,
+)
+
 sealed interface LookupOutcome {
     data class Success(
         val options: List<DefinitionOption>,

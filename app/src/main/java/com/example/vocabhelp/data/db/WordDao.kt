@@ -54,16 +54,8 @@ interface WordDao {
     )
     fun countDue(now: Long): Flow<Int>
 
-    @Query(
-        """
-        SELECT * FROM words
-        WHERE id != :excludingId
-          AND status != 'PENDING_LOOKUP'
-        ORDER BY RANDOM()
-        LIMIT :limit
-        """,
-    )
-    suspend fun getRandomDistractors(excludingId: Long, limit: Int = 3): List<WordEntity>
+    @Query("SELECT * FROM words WHERE status != 'PENDING_LOOKUP'")
+    suspend fun getReviewable(): List<WordEntity>
 
     @Query("SELECT * FROM words WHERE status = 'PENDING_LOOKUP'")
     fun observePending(): Flow<List<WordEntity>>

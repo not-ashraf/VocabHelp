@@ -159,11 +159,13 @@ class WordRepository(
         )
     }
 
-    suspend fun pickQuizQuestion(now: Long = System.currentTimeMillis()): QuizQuestion? {
-        val due = dao.getDueOnce(now).firstOrNull() ?: return null
-        val distractors = dao.getRandomDistractors(due.id, limit = 3)
-        return QuizQuestion(due, distractors)
-    }
+    suspend fun getDueWords(now: Long = System.currentTimeMillis()): List<WordEntity> = dao.getDueOnce(now)
+
+    /** Every word with a meaning; the source of the user's-own-words quiz options. */
+    suspend fun getReviewableWords(): List<WordEntity> = dao.getReviewable()
+
+    /** Words related in meaning (synonyms, decoys) for building quiz questions; empty offline. */
+    suspend fun related(word: String): List<RelatedWord> = dictionary.related(word)
 
     suspend fun countDueNow(now: Long = System.currentTimeMillis()): Int =
         dao.getDueOnce(now).size
@@ -188,8 +190,3 @@ sealed interface SaveOutcome {
     data class Duplicate(val id: Long) : SaveOutcome
     data object Empty : SaveOutcome
 }
-
-data class QuizQuestion(
-    val target: WordEntity,
-    val distractors: List<WordEntity>,
-)

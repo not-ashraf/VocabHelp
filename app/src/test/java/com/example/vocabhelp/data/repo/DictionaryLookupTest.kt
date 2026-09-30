@@ -173,6 +173,7 @@ class DictionaryLookupTest {
         private val onSuggest = suggest
         override suspend fun define(word: String, metadata: String, max: Int): List<DatamuseWordDto> = onDefine(word)
         override suspend fun suggest(prefix: String, max: Int): List<DatamuseWordDto> = onSuggest(prefix)
+        override suspend fun meansLike(word: String, metadata: String, max: Int): List<DatamuseWordDto> = emptyList()
     }
 
     private companion object {

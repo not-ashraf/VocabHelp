@@ -1,6 +1,7 @@
 package com.example.vocabhelp.data.repo
 
 import com.example.vocabhelp.data.remote.DatamuseApi
+import com.example.vocabhelp.data.remote.DatamuseWordDto
 import com.example.vocabhelp.data.remote.WiktionaryApi
 import com.example.vocabhelp.data.remote.WiktionaryUsageDto
 import kotlinx.coroutines.CancellationException
@@ -48,6 +49,22 @@ class DictionaryLookup(
         }
     }
 
+    /**
+     * Words related in meaning to [word] (synonyms first), each with its parts
+     * of speech and definitions. Used to build quiz questions; empty on any failure.
+     */
+    suspend fun related(word: String): List<RelatedWord> {
+        val normalized = word.trim().lowercase()
+        if (normalized.isEmpty()) return emptyList()
+        return try {
+            datamuse.meansLike(normalized).mapNotNull { it.toRelatedWord() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     private sealed interface Attempt {
         data class Found(val options: List<DefinitionOption>) : Attempt
         data object Missing : Attempt
@@ -88,6 +105,18 @@ internal fun parseDatamuse(defs: List<String>): List<DefinitionOption> = defs.ma
     val text = (if (tab >= 0) raw.substring(tab + 1) else raw).trim()
     if (text.isEmpty()) return@mapNotNull null
     DefinitionOption(partOfSpeech = DATAMUSE_POS[tag], definition = text, example = null)
+}
+
+private fun DatamuseWordDto.toRelatedWord(): RelatedWord? {
+    val w = word.trim().lowercase()
+    // Multi-word phrases ("juvenile delinquent") make poor quiz options.
+    if (w.isEmpty() || w.contains(' ')) return null
+    return RelatedWord(
+        word = w,
+        partsOfSpeech = tags.mapNotNull { DATAMUSE_POS[it] }.toSet(),
+        isSynonym = "syn" in tags,
+        definitions = parseDatamuse(defs),
+    )
 }
 
 private val DATAMUSE_POS = mapOf(

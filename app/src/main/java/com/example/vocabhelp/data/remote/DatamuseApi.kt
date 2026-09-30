@@ -14,6 +14,17 @@ interface DatamuseApi {
         @Query("max") max: Int = 1,
     ): List<DatamuseWordDto>
 
+    /**
+     * Words with a meaning similar to [word]. `md=dp` adds definitions and
+     * part-of-speech tags; true synonyms carry the "syn" tag.
+     */
+    @GET("words")
+    suspend fun meansLike(
+        @Query("ml") word: String,
+        @Query("md") metadata: String = "dp",
+        @Query("max") max: Int = 15,
+    ): List<DatamuseWordDto>
+
     /** Autocomplete: words that start with (or are spelled close to) [prefix]. */
     @GET("sug")
     suspend fun suggest(
@@ -31,4 +42,6 @@ data class DatamuseWordDto(
     val word: String,
     /** Each entry is "<pos>\t<definition>", e.g. "n\tA furtive sneaking motion. ". */
     val defs: List<String> = emptyList(),
+    /** Present with `md=p`: part-of-speech codes ("n", "v", "adj", "adv") plus markers like "syn". */
+    val tags: List<String> = emptyList(),
 )
