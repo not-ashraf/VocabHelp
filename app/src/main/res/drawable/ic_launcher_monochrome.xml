@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Single-colour silhouette for Android 13+ themed icons (tinted by the system). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M504,395 C434,350 338,341 262,360 L262,690 C340,670 434,678 504,724 Z M520,395 C590,350 686,341 762,360 L762,690 C684,670 590,678 520,724 Z M660,250 L680,305 L735,325 L680,345 L660,400 L640,345 L585,325 L640,305 Z" />
+</vector>

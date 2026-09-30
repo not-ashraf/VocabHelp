@@ -1,15 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Open book with a spark. Content stays inside the adaptive-icon safe zone (radius ~312 of 1024). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="1024"
     android:viewportHeight="1024">
 
+    <!-- Left page -->
     <path
-        android:strokeColor="#E8A33D"
-        android:strokeWidth="56"
+        android:fillColor="#F5EBDD"
+        android:pathData="M512,400 C440,350 340,340 262,360 L262,690 C340,670 440,680 512,730 Z" />
+    <!-- Right page, slightly shaded -->
+    <path
+        android:fillColor="#E9DCC7"
+        android:pathData="M512,400 C584,350 684,340 762,360 L762,690 C684,670 584,680 512,730 Z" />
+    <!-- Spine -->
+    <path
+        android:strokeColor="#1E1B4B"
+        android:strokeWidth="10"
+        android:pathData="M512,400 L512,730" />
+    <!-- Text lines -->
+    <path
+        android:strokeColor="#C9B89E"
+        android:strokeWidth="16"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M312,612 L192,612 M338.81,512 L234.72,452 M412,438.81 L352,334.72 M512,412 L512,292 M612,438.81 L672,334.72 M685.19,512 L789.28,452 M712,612 L832,612 M332,732 L692,732" />
-
+        android:pathData="M330,450 C380,440 430,445 470,465 M330,520 C380,510 430,515 470,535 M330,590 C380,580 430,585 470,605" />
+    <!-- Spark -->
+    <path
+        android:fillColor="#E8A33D"
+        android:pathData="M660,250 L680,305 L735,325 L680,345 L660,400 L640,345 L585,325 L640,305 Z" />
 </vector>

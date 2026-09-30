@@ -1,26 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="VocabHelp">
-  
-  <g fill="none" stroke="#E8A33D" stroke-width="56" stroke-linecap="round" stroke-linejoin="round">
-    
-    
-    
-
-    
-    <line x1="312" y1="612" x2="192" y2="612"></line>
-    
-    <line x1="338.81" y1="512.00" x2="234.72" y2="452.00"></line>
-    
-    <line x1="412.00" y1="438.81" x2="352.00" y2="334.72"></line>
-    
-    <line x1="512" y1="412" x2="512" y2="292"></line>
-    
-    <line x1="612.00" y1="438.81" x2="672.00" y2="334.72"></line>
-    
-    <line x1="685.19" y1="512.00" x2="789.28" y2="452.00"></line>
-    
-    <line x1="712" y1="612" x2="832" y2="612"></line>
-
-    
-    <line x1="332" y1="732" x2="692" y2="732"></line>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><rect width="1024" height="1024" fill="#1E1B4B"/>
+<path d="M512 400 C440 350 340 340 262 360 L262 690 C340 670 440 680 512 730 Z" fill="#F5EBDD"/>
+<path d="M512 400 C584 350 684 340 762 360 L762 690 C684 670 584 680 512 730 Z" fill="#E9DCC7"/>
+<path d="M512 400 L512 730" stroke="#1E1B4B" stroke-width="10"/>
+<path d="M330 450 C380 440 430 445 470 465 M330 520 C380 510 430 515 470 535 M330 590 C380 580 430 585 470 605" stroke="#C9B89E" stroke-width="16" stroke-linecap="round" fill="none"/>
+<path d="M660 250 L680 305 L735 325 L680 345 L660 400 L640 345 L585 325 L640 305 Z" fill="#E8A33D"/>
 </svg>
