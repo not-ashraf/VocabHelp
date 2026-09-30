@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -27,6 +28,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,6 +57,7 @@ fun WordDetailScreen(
     val word by vm.word.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val player = remember { PronunciationPlayer(context) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose { player.release() }
@@ -70,7 +73,7 @@ fun WordDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { vm.delete(onBack) }) {
+                    IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete")
                     }
                 },
@@ -95,6 +98,29 @@ fun WordDetailScreen(
             onSaveUserFields = vm::saveUserFields,
         )
     }
+
+    if (showDeleteDialog) {
+        DeleteWordDialog(
+            word = word?.word.orEmpty(),
+            onConfirm = {
+                showDeleteDialog = false
+                vm.delete(onBack)
+            },
+            onDismiss = { showDeleteDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun DeleteWordDialog(word: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+        title = { Text("Delete \"$word\"?") },
+        text = { Text("This will remove the word and its review history. This can't be undone.") },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

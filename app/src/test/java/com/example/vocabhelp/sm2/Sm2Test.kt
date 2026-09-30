@@ -41,6 +41,15 @@ class Sm2Test {
     }
 
     @Test
+    fun `lapse lowers EF so the word comes back sooner in future`() {
+        var s = Sm2State.INITIAL
+        repeat(3) { s = applySm2(s, quality =5) }
+        val lapsed = applySm2(s, quality =1)
+        // q=1: 0.1 - 4*(0.08 + 4*0.02) = -0.54
+        assertEquals(s.ef - 0.54f, lapsed.ef, 0.001f)
+    }
+
+    @Test
     fun `EF never drops below 1_3 on repeated lapses`() {
         var s = Sm2State.INITIAL
         repeat(20) { s = applySm2(s, quality =0) }

@@ -19,17 +19,17 @@ data class Sm2State(
  *   3 = correct after a hint
  *   1 = wrong tap (lapse)
  *
- * On lapse (q < 3): reset reps -> 0, interval -> 1 day, EF stays bounded at >= 1.3.
+ * EF is updated on every review (standard SM-2), so lapses make a word
+ * come back sooner in future, bounded at >= 1.3.
+ * On lapse (q < 3): reset reps -> 0, interval -> 1 day.
  * On success: grow reps; interval cycles through 1d, 6d, then prev * EF.
  */
 fun applySm2(prev: Sm2State, quality: Int): Sm2State {
     val q = quality.coerceIn(0, 5)
+    val newEf = (prev.ef + (0.1f - (5 - q) * (0.08f + (5 - q) * 0.02f)))
+        .coerceAtLeast(MIN_EF)
     if (q < 3) {
-        return Sm2State(
-            ef = prev.ef.coerceAtLeast(MIN_EF),
-            intervalDays = 1,
-            repetitions = 0,
-        )
+        return Sm2State(ef = newEf, intervalDays = 1, repetitions = 0)
     }
     val newReps = prev.repetitions + 1
     val newInterval = when (newReps) {
@@ -37,8 +37,6 @@ fun applySm2(prev: Sm2State, quality: Int): Sm2State {
         2 -> 6
         else -> ceil(prev.intervalDays * prev.ef).toInt().coerceAtLeast(1)
     }
-    val newEf = (prev.ef + (0.1f - (5 - q) * (0.08f + (5 - q) * 0.02f)))
-        .coerceAtLeast(MIN_EF)
     return Sm2State(ef = newEf, intervalDays = newInterval, repetitions = newReps)
 }
 
