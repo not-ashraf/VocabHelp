@@ -30,9 +30,9 @@ data/db/               Room: WordEntity (table `words`), WordDao, Converters, Vo
 data/remote/           WiktionaryApi (en.wiktionary.org REST definitions), DatamuseApi (definitions fallback + /sug autocomplete)
 data/repo/             WordRepository (the only business-logic layer), DictionaryLookup (source fallback + HTML parsing), LookupOutcome/SaveOutcome
 data/prefs/            SettingsRepository (DataStore: reminder enabled/hour/minute, notif prompt dismissed)
-sm2/Sm2.kt             Pure SM-2 function applySm2(state, quality); unit-tested
+sm2/                   Sm2.kt: pure applySm2(state, quality). Schedule.kt: dueAtStartOfDay, millisUntilNext. Both unit-tested
 quiz/                  QuizQuestionFactory: builds one card per due word (pure logic, injected Random + related-words fn)
-work/                  WorkScheduler, DueReminderWorker (daily, periodic), PendingLookupWorker (one-shot, needs network)
+work/                  WorkScheduler, DueReminderWorker (one-shot, re-chains itself daily), PendingLookupWorker (one-shot, needs network, retries on network failure)
 notifications/         DueWordsNotifier (channel `vocab_due_words`, taps open the Quiz)
 audio/                 PronunciationPlayer (plays a saved mp3 URL if present, else on-device TextToSpeech)
 ui/{home,add,detail,quiz,settings}/   Screen + ViewModel per feature; ui/nav holds Routes + NavHost
@@ -78,9 +78,13 @@ Pattern: each screen has a `XxxViewModel` that exposes a single `StateFlow<XxxUi
    - **Definition clean-up:** `cleanDefinition` strips leading "(label)" tags and normalises capitalisation and the final full stop, so the correct answer doesn't stand out by style.
    - **Junk meanings:** definitions shorter than 12 characters get flashcard or synonym cards only.
    - **Timeout:** related-word lookups are capped at 2.5 s (`RELATED_TIMEOUT_MS`) and cached per session.
-   - **Scheduling:** `nextReviewAt = now + intervalDays * 24h`.
-4. **Daily reminder**: `VocabHelpApp.onCreate` and `SettingsViewModel` call `WorkScheduler.scheduleDailyReminder(h, m)`. This is a 1-day `PeriodicWorkRequest` whose initial delay runs until the next h:m, using `ExistingPeriodicWorkPolicy.UPDATE`. The worker counts due words and notifies only if there is at least one. Tapping the notification opens `MainActivity` with `EXTRA_OPEN_QUIZ`, and `VocabNavHost` navigates to `Route.Quiz`. The default reminder time is 21:00, enabled.
-5. **Home**: search with a 250 ms debounce (a SQL `LIKE` over `word` and the raw `meanings` JSON, plus Datamuse suggestions), a due banner, a notification-permission prompt card (API 33+), and long-press multi-select delete.
+   - **Scheduling:** `nextReviewAt = dueAtStartOfDay(now, intervalDays)`, i.e. local midnight, so a word reviewed after the reminder is still due at the next day's reminder. New words are due from the start of today.
+4. **Daily reminder** (`WorkScheduler.scheduleDailyReminder(h, m, replaceExisting)`):
+   - It enqueues one-shot unique work `vocab_due_reminder_daily` with a delay until the next h:m. `DueReminderWorker` notifies if any words are due, then schedules the next day's run.
+   - `SettingsViewModel` uses REPLACE. `VocabHelpApp.onCreate` uses KEEP, so launching the app doesn't disturb a pending reminder.
+   - Every schedule call also cancels the legacy periodic work `vocab_due_reminder`. That 24h PeriodicWorkRequest stayed anchored to its first run's time of day and ignored setting changes.
+   - To check on a device, read `no_backup/androidx.work.workdb` via `run-as`, or force a run with `adb shell cmd jobscheduler run -f com.example.vocabhelp <jobId>`. Tapping the notification opens `MainActivity` with `EXTRA_OPEN_QUIZ`, and `VocabNavHost` navigates to `Route.Quiz`. The default reminder time is 21:00, enabled.
+5. **Home**: search with a 250 ms debounce (a SQL `LIKE` narrows the results, then `matchesQuery` keeps only real text matches; Datamuse suggestions are shown too), a due banner that re-queries every minute (`observeDueCount`), a notification-permission prompt card (API 33+), and long-press multi-select delete.
 
 ## Gotchas / things to know before changing code
 
@@ -89,13 +93,13 @@ Pattern: each screen has a `XxxViewModel` that exposes a single `StateFlow<XxxUi
   - Any `WordEntity` change must bump `version` and add a Room `Migration`. Without a migration, the app crashes on upgrade rather than wiping data.
   - Install with `adb install -r` (or `installDebug`) and never uninstall.
   - Back up the database first: the app is debuggable, so `adb exec-out run-as com.example.vocabhelp cat databases/vocab.db` works for `vocab.db`, `-wal` and `-shm`.
-- `meanings` is a JSON blob. Searching with `LIKE` also matches the JSON keys (`definition`, `example`, `partOfSpeech`).
-- `WordDao.observeDue(now)` and `countDue(now)` capture `now` once, when the Flow is created, so they do not advance on their own as time passes.
+- `meanings` is a JSON blob. The SQL `LIKE` alone would also match JSON keys (`definition`, ...), which is why `WordRepository.observeAll` post-filters with `matchesQuery`.
+- `WordDao.countDue(now)` binds `now` when the Flow is created. Use `WordRepository.observeDueCount()`, which re-binds it every minute.
 - `WordRepository.resolveLookup`'s KDoc says the user "can re-pick on the detail screen later", but that UI does not exist. The detail screen can only set a manual meaning, and only for PENDING words.
 - Only words saved in the dictionaryapi.dev era have `phoneticAudioUrl`. New words are always saved with a null audio URL and pronounced with text-to-speech. The manifest's `<queries>` entry for `TTS_SERVICE` is required on API 30+.
 - **Testing the quiz on the real phone changes real SM-2 state.** Back up the database first, then restore it afterwards: `adb push` each file to `/data/local/tmp` and copy it into `databases/` with `run-as ... sh -c 'cat > ...'` while the app is force-stopped.
 - The launcher icon is an adaptive vector: `drawable/ic_launcher_{foreground,background,monochrome}.xml`, an open book with a spark on indigo `#1E1B4B`. The legacy `mipmap-*/ic_launcher*.webp` files are rendered from `vocabhelp-mark.svg` (headless Chrome, then ImageMagick). ImageMagick's own SVG renderer drops strokes, so don't use it.
-- The notification small icon is the platform drawable `android.R.drawable.ic_menu_recent_history`.
+- The notification small icon is `drawable/ic_stat_notify`, the book-and-spark silhouette in white only.
 - `AppContainer.workScheduler` and the `WorkScheduler(container)` created in `VocabHelpApp.onCreate` are two separate instances. This is harmless because both wrap `WorkManager.getInstance`.
 - Strings are hardcoded in Kotlin rather than kept in `strings.xml`. Match this when editing existing screens.
 

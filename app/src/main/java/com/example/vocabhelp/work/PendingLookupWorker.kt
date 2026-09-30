@@ -13,8 +13,9 @@ class PendingLookupWorker(
     override suspend fun doWork(): Result {
         val container = applicationContext.appContainer()
         return try {
-            container.wordRepository.retryAllPending()
-            Result.success()
+            // Words the dictionaries don't know stay pending; only network failures retry.
+            val failed = container.wordRepository.retryAllPending()
+            if (failed > 0) Result.retry() else Result.success()
         } catch (_: Exception) {
             Result.retry()
         }

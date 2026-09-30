@@ -41,7 +41,7 @@ class HomeViewModel(
             if (q.length < MIN_SUGGEST_LENGTH) emptyList() else repo.suggestNewWords(q)
         }
 
-    private val dueCount = repo.countDue()
+    private val dueCount = repo.observeDueCount()
 
     private val searchResults = combine(words, suggestions, ::Pair)
 

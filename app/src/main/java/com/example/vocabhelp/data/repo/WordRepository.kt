@@ -6,15 +6,37 @@ import com.example.vocabhelp.data.db.WordDao
 import com.example.vocabhelp.data.db.WordEntity
 import com.example.vocabhelp.sm2.Sm2State
 import com.example.vocabhelp.sm2.applySm2
+import com.example.vocabhelp.sm2.dueAtStartOfDay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 
 class WordRepository(
     private val dao: WordDao,
     private val dictionary: DictionaryLookup,
 ) {
-    fun observeAll(query: String): Flow<List<WordEntity>> = dao.observeAll(query)
-    fun observeDue(now: Long = System.currentTimeMillis()): Flow<List<WordEntity>> = dao.observeDue(now)
-    fun countDue(now: Long = System.currentTimeMillis()): Flow<Int> = dao.countDue(now)
+    /**
+     * SQL narrows by `LIKE` over the word and the raw meanings JSON; the Kotlin
+     * filter then drops rows that only matched JSON keys ("definition", ...).
+     */
+    fun observeAll(query: String): Flow<List<WordEntity>> =
+        dao.observeAll(query).map { rows -> rows.filter { it.matchesQuery(query) } }
+
+    /**
+     * Due count that stays current while observed: re-queries every minute, so
+     * words that fall due while the app is open (and a changed clock) show up.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeDueCount(): Flow<Int> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(DUE_REFRESH_MS)
+        }
+    }.flatMapLatest { now -> dao.countDue(now) }.distinctUntilChanged()
     fun observeById(id: Long): Flow<WordEntity?> = dao.observeById(id)
     fun observePending(): Flow<List<WordEntity>> = dao.observePending()
 
@@ -81,7 +103,8 @@ class WordRepository(
                 contextSentence = contextSentence?.takeIf { it.isNotBlank() }?.trim(),
                 personalNote = personalNote?.takeIf { it.isNotBlank() }?.trim(),
                 status = status,
-                nextReviewAt = now,
+                // Start of today: due immediately, even for queries whose `now` predates the save.
+                nextReviewAt = dueAtStartOfDay(now, intervalDays = 0),
                 createdAt = now,
             ),
         )
@@ -100,10 +123,14 @@ class WordRepository(
      * we still pick only the first sense automatically because the user isn't
      * present to choose. They can re-pick on the detail screen later.
      */
-    suspend fun resolveLookup(id: Long): Boolean {
-        val existing = dao.getById(id) ?: return false
-        if (existing.status != MeaningStatus.PENDING_LOOKUP) return true
-        val found = dictionary.lookup(existing.word) as? LookupOutcome.Success ?: return false
+    suspend fun resolveLookup(id: Long): ResolveResult {
+        val existing = dao.getById(id) ?: return ResolveResult.NOT_FOUND
+        if (existing.status != MeaningStatus.PENDING_LOOKUP) return ResolveResult.RESOLVED
+        val found = when (val outcome = dictionary.lookup(existing.word)) {
+            is LookupOutcome.Success -> outcome
+            LookupOutcome.NotFound -> return ResolveResult.NOT_FOUND
+            LookupOutcome.NetworkError -> return ResolveResult.FAILED
+        }
         dao.update(
             existing.copy(
                 meanings = listOf(found.options.first().toMeaningEntry()),
@@ -111,14 +138,12 @@ class WordRepository(
                 status = MeaningStatus.RESOLVED,
             ),
         )
-        return true
+        return ResolveResult.RESOLVED
     }
 
-    suspend fun retryAllPending(): Int {
-        var resolved = 0
-        dao.getPendingOnce().forEach { if (resolveLookup(it.id)) resolved++ }
-        return resolved
-    }
+    /** Tries every pending word; returns how many failed on the network (worth retrying). */
+    suspend fun retryAllPending(): Int =
+        dao.getPendingOnce().count { resolveLookup(it.id) == ResolveResult.FAILED }
 
     suspend fun setManualMeaning(id: Long, meaning: String) {
         val w = dao.getById(id) ?: return
@@ -147,7 +172,7 @@ class WordRepository(
         val prev = Sm2State(w.easeFactor, w.intervalDays, w.repetitions)
         val next = applySm2(prev, quality)
         val now = System.currentTimeMillis()
-        val nextReview = now + next.intervalDays.toLong() * 24L * 60L * 60L * 1000L
+        val nextReview = dueAtStartOfDay(now, next.intervalDays)
         dao.update(
             w.copy(
                 easeFactor = next.ef,
@@ -175,6 +200,21 @@ class WordRepository(
     suspend fun deleteByIds(ids: Collection<Long>) {
         if (ids.isEmpty()) return
         dao.deleteByIds(ids.toList())
+    }
+}
+
+private const val DUE_REFRESH_MS = 60_000L
+
+enum class ResolveResult { RESOLVED, NOT_FOUND, FAILED }
+
+/** Case-insensitive match on the word or any saved sense's text (never the JSON field names). */
+internal fun WordEntity.matchesQuery(query: String): Boolean {
+    val q = query.trim()
+    if (q.isEmpty()) return true
+    return word.contains(q, ignoreCase = true) || meanings.any { m ->
+        m.definition.contains(q, ignoreCase = true) ||
+            m.example?.contains(q, ignoreCase = true) == true ||
+            m.partOfSpeech?.contains(q, ignoreCase = true) == true
     }
 }
 

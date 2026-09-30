@@ -40,7 +40,7 @@ class VocabHelpApp : Application() {
         appScope.launch {
             val settings = container.settingsRepository.settings.first()
             if (settings.enabled) {
-                scheduler.scheduleDailyReminder(settings.hour, settings.minute)
+                scheduler.scheduleDailyReminder(settings.hour, settings.minute, replaceExisting = false)
             }
         }
     }

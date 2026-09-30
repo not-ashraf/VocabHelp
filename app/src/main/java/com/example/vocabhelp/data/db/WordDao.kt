@@ -33,16 +33,6 @@ interface WordDao {
         ORDER BY nextReviewAt ASC
         """,
     )
-    fun observeDue(now: Long): Flow<List<WordEntity>>
-
-    @Query(
-        """
-        SELECT * FROM words
-        WHERE status != 'PENDING_LOOKUP'
-          AND nextReviewAt <= :now
-        ORDER BY nextReviewAt ASC
-        """,
-    )
     suspend fun getDueOnce(now: Long): List<WordEntity>
 
     @Query(

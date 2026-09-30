@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: the launcher's open-book-and-spark silhouette, cropped to fill 24dp. White only (system tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="560"
+    android:viewportHeight="560">
+
+    <group
+        android:translateX="-232"
+        android:translateY="-210">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M504,395 C434,350 338,341 262,360 L262,690 C340,670 434,678 504,724 Z M520,395 C590,350 686,341 762,360 L762,690 C684,670 590,678 520,724 Z M660,250 L680,305 L735,325 L680,345 L660,400 L640,345 L585,325 L640,305 Z" />
+    </group>
+</vector>

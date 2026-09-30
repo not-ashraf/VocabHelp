@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.example.vocabhelp.MainActivity
+import com.example.vocabhelp.R
 
 class DueWordsNotifier(private val context: Context) {
 
@@ -32,7 +33,7 @@ class DueWordsNotifier(private val context: Context) {
 
         val wordWord = if (dueCount == 1) "word" else "words"
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_recent_history)
+            .setSmallIcon(R.drawable.ic_stat_notify)
             .setContentTitle("Quiz time")
             .setContentText("Take today's quiz — $dueCount $wordWord ready")
             .setContentIntent(pending)

@@ -1,15 +1,14 @@
 package com.example.vocabhelp.work
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.vocabhelp.AppContainer
-import java.util.Calendar
+import com.example.vocabhelp.sm2.millisUntilNext
 import java.util.concurrent.TimeUnit
 
 /**
@@ -30,6 +29,7 @@ class WorkScheduler(
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build(),
             )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
         workManager.enqueueUniqueWork(
             PendingLookupWorker.UNIQUE_NAME,
@@ -38,33 +38,29 @@ class WorkScheduler(
         )
     }
 
-    fun scheduleDailyReminder(hour: Int, minute: Int) {
-        val initialDelay = computeInitialDelayMillis(hour, minute)
-        val request = PeriodicWorkRequestBuilder<DueReminderWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
+    /**
+     * Schedules the next reminder as one-shot work at the next [hour]:[minute];
+     * [DueReminderWorker] schedules the following day's when it runs. (A 24h
+     * PeriodicWorkRequest stays anchored to the time of its first run, so
+     * changing the reminder time never took effect.)
+     *
+     * [replaceExisting] = true when the time/enabled setting changed; false on
+     * app start, so launching the app doesn't disturb a pending reminder.
+     */
+    fun scheduleDailyReminder(hour: Int, minute: Int, replaceExisting: Boolean = true) {
+        workManager.cancelUniqueWork(DueReminderWorker.LEGACY_PERIODIC_NAME)
+        val request = OneTimeWorkRequestBuilder<DueReminderWorker>()
+            .setInitialDelay(millisUntilNext(hour, minute, System.currentTimeMillis()), TimeUnit.MILLISECONDS)
             .build()
-        workManager.enqueueUniquePeriodicWork(
+        workManager.enqueueUniqueWork(
             DueReminderWorker.UNIQUE_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
+            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             request,
         )
     }
 
     fun cancelDailyReminder() {
         workManager.cancelUniqueWork(DueReminderWorker.UNIQUE_NAME)
-    }
-
-    private fun computeInitialDelayMillis(hour: Int, minute: Int): Long {
-        val now = Calendar.getInstance()
-        val target = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            if (timeInMillis <= now.timeInMillis) {
-                add(Calendar.DAY_OF_YEAR, 1)
-            }
-        }
-        return target.timeInMillis - now.timeInMillis
+        workManager.cancelUniqueWork(DueReminderWorker.LEGACY_PERIODIC_NAME)
     }
 }
